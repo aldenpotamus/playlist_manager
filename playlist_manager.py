@@ -421,7 +421,7 @@ def buildMigrationPlan(videoData, playlistData):
         mainPlaylist, archives = differentiatePlaylists(playlistData[game])
 
         playListItems = mainPlaylist['videoList']
-        if len(playListItems) > maxPlaylistSize:
+        if len(videoData[game]) > maxPlaylistSize:
             print(f'\tPlaylist [{game}] [{len(playListItems)}], migration required...')
 
             endSplit = (len(videoData[game])+1) - maxPlaylistSize
@@ -437,7 +437,7 @@ def buildMigrationPlan(videoData, playlistData):
                 splitPoint = (i + 1) * maxPlaylistSize
                 
                 if previousSplitPoint == len(videoDataForArchive):
-                    print('\t\tDone... not more playlists needs...')
+                    print('\t\tDone... no more playlists needs...')
                     break
                 
                 if splitPoint < (len(videoDataForArchive)-1):
@@ -454,8 +454,8 @@ def buildMigrationPlan(videoData, playlistData):
                     'playlist_type': 'ARCHIVAL',
                     'playlist_game': game,
                     'archive_num': (i + 1),
-                    'vid_index_start': max(0, previousSplitPoint-1),
-                    'vid_index_end': splitPoint,
+                    'vid_index_start': previousSplitPoint,
+                    'vid_index_end': splitPoint + 1,
                     'ep_start': videoDataForArchive[previousSplitPoint]["episode_number"],
                     'ep_end': videoDataForArchive[splitPoint]["episode_number"],
                     'videos': mainPlaylist['videoList'][previousSplitPoint:splitPoint]
@@ -539,9 +539,7 @@ if __name__ == '__main__':
     gc = pygsheets.authorize(service_file=CONFIG['SHEET']['serviceToken'])
     sheet = gc.open_by_key(CONFIG['SHEET']['id'])
 
-    youtube = AuthManager.get_authenticated_service('playlist-manager',
-                                                    clientSecretFile=CONFIG['AUTHENTICATION']['clientSecret'],
-                                                    scopes=['https://www.googleapis.com/auth/youtube.force-ssl'],
-                                                    config=CONFIG)
+    youtube = AuthManager.get_authenticated_service(CONFIG['PLAYLIST_MANAGER'], 
+                                                    authConfig=CONFIG['AUTH_MANAGER'])
 
     main()
