@@ -473,7 +473,7 @@ def buildMigrationPlan(videoData, playlistData):
 
 def createArchivalPlaylists(playlistData, playlistsToCreate):
     for game in playlistData:
-        print('Creating new Archival Playlists for Game [{game}]...')
+        print(f'Creating new Archival Playlists for Game [{game}]...')
 
         print('\tFinding existing playlists...')
         for pos, newPlaylist in enumerate(playlistsToCreate):
@@ -483,12 +483,69 @@ def createArchivalPlaylists(playlistData, playlistsToCreate):
             if (game, str(archiveNum)) in [(p['playlist_game'], p['archive_num']) for p in playlistData[game]]:
                 print('\t\tPlaylist already exists, updating entry...')
                 existingPlaylist = [p for p in playlistData[game] if p['playlist_game'] == game and p['archive_num'] == str(archiveNum)][0]
+
+                if existingPlaylist['playlist_title'] != newPlaylist['playlist_title']:
+                    existingPlaylist['playlist_title'] = newPlaylist['playlist_title']
+
+                    existingPlaylist['ep_start'] = newPlaylist['ep_start']
+                    existingPlaylist['ep_end'] = newPlaylist['ep_end']
+
+                    existingPlaylist['vid_index_start'] = newPlaylist['vid_index_start']
+                    existingPlaylist['vid_index_end'] = newPlaylist['vid_index_end']
+
+                    ytUpdatePlaylistTitle(existingPlaylist)
+
                 newPlaylist['playlist_id'] = existingPlaylist['playlist_id']
             else:
                 ytCreatePlaylist(newPlaylist)
                 playlistData[game].append(newPlaylist)
 
         return
+
+def ytUpdatePlaylistTitle(existingPlaylist):
+    if not CONFIG.getboolean('GENERAL', 'testMode'):
+        print('\t\t\tPlaylist Name & Discription Out of Date...')
+        request = youtube.playlists().insert(
+            part='snippet,status',
+            body={
+                'snippet': {
+                    'title': existingPlaylist['playlist_title'],
+                    'description': f'{existingPlaylist["playlist_game"]} episodes {existingPlaylist["ep_start"]} through {existingPlaylist["ep_end"]}.',
+                    'defaultLanguage': 'en'
+                },
+                'status': {
+                    'privacyStatus': 'public'
+                }
+            }
+        )
+        response = request.execute()
+
+        # Fix the spreadsheet...
+        print('\t\t\tUpdating Playlist Entry in Sheet...')
+        playlistWorksheet = sheet.worksheet_by_title(CONFIG['SHEET']['playlistSheetName'])
+        headers = playlistWorksheet.get_values(start='A2', end='Z2', include_tailing_empty=False, returnas='matrix')[0]
+        playlists = playlistWorksheet.get_values(start='A4', end='Z100', include_tailing_empty=False, returnas='matrix')
+        playlistData = [{key: value for (key,value) in zip(headers, p)} for p in playlists]
+
+        entryToUpdate = [(row+4,x) for (row,x) in 
+                         enumerate(playlistData) if
+                         x['playlist_game'] == existingPlaylist['playlist_game'] and x['archive_num'] == existingPlaylist['archive_num']][0]
+        
+        headerCols = {header: (col+1) for col,header in enumerate(headers)}
+
+        playlistWorksheet.update_value((entryToUpdate[0], headerCols['playlist_title']), existingPlaylist['playlist_title'])
+        playlistWorksheet.update_value((entryToUpdate[0], headerCols['ep_start']), existingPlaylist['ep_start'])
+        playlistWorksheet.update_value((entryToUpdate[0], headerCols['ep_end']), existingPlaylist['ep_end'])
+        playlistWorksheet.update_value((entryToUpdate[0], headerCols['vid_index_start']), existingPlaylist['vid_index_start'])
+        playlistWorksheet.update_value((entryToUpdate[0], headerCols['vid_index_end']), existingPlaylist['vid_index_end'])
+    else:
+        print(f'\t\t\tSkipping API call youtube.playlists().update(title="{existingPlaylist["playlist_title"]}", '\
+              f'description="{existingPlaylist["playlist_game"]} episodes {existingPlaylist["ep_start"]} through {existingPlaylist["ep_end"]}.")')
+                
+        global simulatedQuota
+        simulatedQuota += 50
+
+        print('\t\t\tSkipping modification to sheet...')
 
 def ytCreatePlaylist(newPlaylist):
     newPlaylist['videoList'] = []
@@ -498,14 +555,14 @@ def ytCreatePlaylist(newPlaylist):
         request = youtube.playlists().insert(
             part='snippet,status',
             body={
-            'snippet': {
-                'title': newPlaylist['playlist_title'],
-                'description': f'{newPlaylist["playlist_game"]} episodes {newPlaylist["ep_start"]} through {newPlaylist["ep_end"]}.',
-                'defaultLanguage': 'en'
-            },
-            'status': {
-                'privacyStatus': 'public'
-            }
+                'snippet': {
+                    'title': newPlaylist['playlist_title'],
+                    'description': f'{newPlaylist["playlist_game"]} episodes {newPlaylist["ep_start"]} through {newPlaylist["ep_end"]}.',
+                    'defaultLanguage': 'en'
+                },
+                'status': {
+                    'privacyStatus': 'public'
+                }
             }
         )
         response = request.execute()
